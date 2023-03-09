@@ -28,6 +28,9 @@ export const config = () => {
   }
 }
 
+//process.env.RELAY_ADDRESS = "/ip4/101.35.53.153/tcp/4001/p2p/12D3KooWPp1x9rPxpURNaTNNze5g8nwtQBDRxVhKLebCAB8661oo",
+      
+
 export default async (otherNode) => {
   const node = await createLibp2p(config())
 

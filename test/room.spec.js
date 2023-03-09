@@ -38,8 +38,8 @@ describe('room', function () {
     describe('topic ' + n, () => {
       it('can create a room, and they find each other', (done) => {
         rooms[n] = {
-          a: new PubSubRoom(node1, topic),
-          b: new PubSubRoom(node2, topic)
+          a: new PubSubRoom(node1, topic, 'a'),
+          b: new PubSubRoom(node2, topic, 'b')
         }
 
         let left = 2

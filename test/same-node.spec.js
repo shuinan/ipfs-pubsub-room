@@ -19,7 +19,7 @@ describe('same node', function () {
 
   before(() => {
     for (let i = 0; i < 2; i++) {
-      rooms.push(new PubSubRoom(node, topic))
+      rooms.push(new PubSubRoom(node, topic, i))
     }
   })
 

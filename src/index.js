@@ -13,32 +13,42 @@ const DEFAULT_OPTIONS = {
 
 let index = 0
 
-export default class PubSubRoom extends EventEmitter {
-  constructor (libp2p, topic, options) {
+const charSet = '0123456789AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPpQqRrSsTtUuVvWwXxYyZz'
+const genId = n =>
+  new Array(n)
+    .fill()
+    .map(() => charSet[Math.floor(Math.random() * charSet.length)])
+    .join('')
+
+export class PubSubRoom extends EventEmitter {
+  constructor (libp2p, topic, selfId, options) {
     super()
     this._libp2p = libp2p.libp2p || libp2p
     this._topic = topic
+    this._selfId = selfId
     this._options = Object.assign({}, clone(DEFAULT_OPTIONS), clone(options))
     this._peers = []
     this._connections = {}
 
     this._handleDirectMessage = this._handleDirectMessage.bind(this)
     this._handleMessage = this._onMessage.bind(this)
+    this._handleSelfMessage = this._onSelfMessage.bind(this)
 
     if (!this._libp2p.pubsub) {
       throw new Error('pubsub has not been configured')
     }
 
-    this._interval = setInterval(
-      this._pollPeers.bind(this),
-      this._options.pollInterval
-    )
-
-    directConnection.handle(libp2p)
+    directConnection.handle(this._libp2p)
     directConnection.emitter.on(this._topic, this._handleDirectMessage)
 
     this._libp2p.pubsub.subscribe(this._topic)
     this._libp2p.pubsub.addEventListener('message', this._handleMessage)
+
+    this._selfTopic = `${topic}:${selfId}`
+    this._libp2p.pubsub.subscribe(this._selfTopic)
+    this._libp2p.pubsub.addEventListener('message', this._handleSelfMessage)
+
+    this._interval = null;//setInterval(this._pollPeers.bind(this), this._options.pollInterval)
 
     this._idx = index++
   }
@@ -53,13 +63,19 @@ export default class PubSubRoom extends EventEmitter {
 
   async leave () {
     clearInterval(this._interval)
-    Object.keys(this._connections).forEach((peer) => {
+    Object.keys(this._connections).forEach(peer => {
       this._connections[peer].stop()
     })
-    directConnection.emitter.removeListener(this._topic, this._handleDirectMessage)
+    directConnection.emitter.removeListener(
+      this._topic,
+      this._handleDirectMessage
+    )
     // directConnection.unhandle(this._libp2p)
     await this._libp2p.pubsub.unsubscribe(this._topic)
     this._libp2p.pubsub.removeEventListener('message', this._handleMessage)
+
+    await this._libp2p.pubsub.unsubscribe(this._selfTopic)
+    this._libp2p.pubsub.removeEventListener('message', this._handleSelfMessage)
   }
 
   async broadcast (_message) {
@@ -67,16 +83,23 @@ export default class PubSubRoom extends EventEmitter {
     await this._libp2p.pubsub.publish(this._topic, message)
   }
 
+  async publishTo (peer, _message) {
+    const peerTopic = `${this._topic}:${peer}`
+    const message = encoding(_message)
+    await this._libp2p.pubsub.publish(peerTopic, message)
+  }
+
+  // direct send To
   sendTo (peer, message) {
     let conn = this._connections[peer]
     if (!conn) {
       conn = new Connection(peer, this._libp2p, this)
-      conn.on('error', (err) => this.emit('error', err))
+      conn.on('error', err => this.emit('error', err))
       this._connections[peer] = conn
 
       conn.once('disconnect', () => {
         delete this._connections[peer]
-        this._peers = this._peers.filter((p) => p.toString() !== peer.toString())
+        this._peers = this._peers.filter(p => p.toString() !== peer.toString())
         this.emit('peer left', peer)
       })
     }
@@ -100,7 +123,9 @@ export default class PubSubRoom extends EventEmitter {
   }
 
   async _pollPeers () {
-    const newPeers = (await this._libp2p.pubsub.getSubscribers(this._topic)).sort()
+    const newPeers = (
+      await this._libp2p.pubsub.getSubscribers(this._topic)
+    ).sort()
 
     if (this._emitChanges(newPeers)) {
       this._peers = newPeers
@@ -108,10 +133,13 @@ export default class PubSubRoom extends EventEmitter {
   }
 
   _emitChanges (newPeers) {
-    const differences = diff(this._peers.map(p => p.toString()), newPeers.map(p => p.toString()))
+    const differences = diff(
+      this._peers.map(p => p.toString()),
+      newPeers.map(p => p.toString())
+    )
 
-    differences.added.forEach((peer) => this.emit('peer joined', peer))
-    differences.removed.forEach((peer) => this.emit('peer left', peer))
+    differences.added.forEach(peer => this.emit('peer joined', peer))
+    differences.removed.forEach(peer => this.emit('peer left', peer))
 
     return differences.added.length > 0 || differences.removed.length > 0
   }
@@ -120,6 +148,14 @@ export default class PubSubRoom extends EventEmitter {
     const message = event.detail
 
     if (message.topic === this._topic) {
+      this.emit('message', message)
+    }
+  }
+
+  _onSelfMessage (event) {
+    const message = event.detail
+
+    if (message.topic === this._selfTopic) {
       this.emit('message', message)
     }
   }

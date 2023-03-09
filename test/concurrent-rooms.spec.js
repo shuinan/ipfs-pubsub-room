@@ -42,10 +42,10 @@ describe('concurrent rooms', function () {
   })
 
   it('can create a room, and they find each other', async () => {
-    room1A = new PubSubRoom(node1, topicA)
-    room2A = new PubSubRoom(node2, topicA)
-    room1B = new PubSubRoom(node1, topicB)
-    room2B = new PubSubRoom(node2, topicB)
+    room1A = new PubSubRoom(node1, topicA, '1a')
+    room2A = new PubSubRoom(node2, topicA, '2a')
+    room1B = new PubSubRoom(node1, topicB, '1b')
+    room2B = new PubSubRoom(node2, topicB, '2b')
 
     const roomNodes = [
       [room1A, id2],
